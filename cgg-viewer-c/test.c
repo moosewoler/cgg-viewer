@@ -17,8 +17,6 @@ void test_cg_widget(void);
 void test_cg_sdl(void);
 
 
-
-
 int main(void)
 {
     test_cg_sdl();
@@ -28,7 +26,10 @@ int main(void)
 
 void test_cg_sdl(void)
 {
-    CGW_SDLInit(NULL, 600, 480);
+    CGW_SDLInit("CrossGate Graphics Viewer v0.3", 600, 480);
+    
+    CGW_SDLLoop(NULL);
+
     CGW_SDLQuit();
 }
 
@@ -50,6 +51,67 @@ void test_cg_widget(void)
 
     CGW_Quit();
 }
+
+//void read_config(lua_State* L, char* conf)
+//{
+//    if (luaL_loadfile(L, "config.lua") || (lua_pcall(L,0,0,0)))
+//    {
+//        error(L, "cannot run config file: %s", lua_tostring(L,-1));
+//    }
+//
+//    stackDump(L);
+//    lua_getglobal(L, "window_height");
+//    stackDump(L);
+//    window_height = (int)(lua_tonumber(L,-1));
+//    stackDump(L);
+//    lua_pop(L,1);
+//    stackDump(L);
+//
+//    lua_getglobal(L, "window_width");
+//    stackDump(L);
+//    window_width = (int)(lua_tonumber(L,-1));
+//    stackDump(L);
+//    lua_pop(L,1);
+//    stackDump(L);
+//
+//    printf("%d, %d\n", window_width, window_height);
+//
+//    // get label
+//    lua_getglobal(L, "label");                     // -1 : button
+//    stackDump(L);
+//
+//    if (!lua_istable(L,-1))
+//        error(L, "'label' is not a table");
+//    
+//    lua_pushstring(L, "x");
+//    stackDump(L);
+//    lua_gettable(L,-2);
+//    stackDump(L);
+//    label.x = (int)(lua_tonumber(L,-1));
+//    lua_pop(L,1);
+//    stackDump(L);
+//
+//    lua_pushstring(L, "y");
+//    stackDump(L);
+//    lua_gettable(L,-2);
+//    stackDump(L);
+//    label.y = (int)(lua_tonumber(L,-1));
+//    lua_pop(L,1);
+//    stackDump(L);
+//
+//    lua_pushstring(L, "t");
+//    stackDump(L);
+//    lua_gettable(L,-2);                             
+//    stackDump(L);
+//    strcat(label.text, lua_tostring(L,-1));
+//    lua_pop(L,1);
+//    stackDump(L);
+//    lua_pop(L,1);
+//    stackDump(L);
+//    
+//    printf("%s, %d, %d\n", label.text, label.x, label.y);
+//}
+
 
 
 /*******************************************************************************
@@ -144,65 +206,6 @@ void test_cg_widget(void)
 //    printf("\n");
 //}
 //
-//void read_config(lua_State* L, char* conf)
-//{
-//    if (luaL_loadfile(L, "config.lua") || (lua_pcall(L,0,0,0)))
-//    {
-//        error(L, "cannot run config file: %s", lua_tostring(L,-1));
-//    }
-//
-//    stackDump(L);
-//    lua_getglobal(L, "window_height");
-//    stackDump(L);
-//    window_height = (int)(lua_tonumber(L,-1));
-//    stackDump(L);
-//    lua_pop(L,1);
-//    stackDump(L);
-//
-//    lua_getglobal(L, "window_width");
-//    stackDump(L);
-//    window_width = (int)(lua_tonumber(L,-1));
-//    stackDump(L);
-//    lua_pop(L,1);
-//    stackDump(L);
-//
-//    printf("%d, %d\n", window_width, window_height);
-//
-//    // get label
-//    lua_getglobal(L, "label");                     // -1 : button
-//    stackDump(L);
-//
-//    if (!lua_istable(L,-1))
-//        error(L, "'label' is not a table");
-//    
-//    lua_pushstring(L, "x");
-//    stackDump(L);
-//    lua_gettable(L,-2);
-//    stackDump(L);
-//    label.x = (int)(lua_tonumber(L,-1));
-//    lua_pop(L,1);
-//    stackDump(L);
-//
-//    lua_pushstring(L, "y");
-//    stackDump(L);
-//    lua_gettable(L,-2);
-//    stackDump(L);
-//    label.y = (int)(lua_tonumber(L,-1));
-//    lua_pop(L,1);
-//    stackDump(L);
-//
-//    lua_pushstring(L, "t");
-//    stackDump(L);
-//    lua_gettable(L,-2);                             
-//    stackDump(L);
-//    strcat(label.text, lua_tostring(L,-1));
-//    lua_pop(L,1);
-//    stackDump(L);
-//    lua_pop(L,1);
-//    stackDump(L);
-//    
-//    printf("%s, %d, %d\n", label.text, label.x, label.y);
-//}
 //
 //
 //int main(void)

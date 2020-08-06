@@ -1,3 +1,4 @@
+window_name = "Baby Cgg Viewer"
 window_width  = 640
 window_height = 480
 textbox_width = 250

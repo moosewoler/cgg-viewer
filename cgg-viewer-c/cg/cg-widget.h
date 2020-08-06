@@ -103,6 +103,10 @@ extern "C" {
 int         CGW_Init(void);
 int         CGW_Quit(void);
 
+// MWO: CGW_SDLxxxx函数不要外露了，让CGW自己处理吧。
+//int         CGW_AddTask(char* name, void* task);
+
+
 CGWidget*   CGW_WidgetCreate(char* name, int x, int y, int w, int h);
 void        CGW_WidgetDestroy(CGWidget* w);
 int         CGW_WidgetSetName(CGWidget* w, char* name);
@@ -110,6 +114,7 @@ int         CGW_WidgetSetName(CGWidget* w, char* name);
 // cg-sdl
 int         CGW_SDLInit(char* name, int w, int h);   
 int         CGW_SDLQuit(void);
+int         CGW_SDLLoop(void* a);
 
 //int         CGW_WidgetSetPos();
 //int         CGW_WidgetSetSize();

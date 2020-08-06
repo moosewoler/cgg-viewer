@@ -33,7 +33,9 @@ typedef struct _ACGSDLInterface ACGSDLInterface;
 
 static ACGSDLInterface sdl_interface;
 
-void sdl_mainloop(void)
+static int TMP=0;
+
+void sdl_mainloop(void* a)
 {
     SDL_Event e;
     while(sdl_interface.quit == CG_FALSE)
@@ -45,7 +47,14 @@ void sdl_mainloop(void)
             {
                 sdl_interface.quit=CG_TRUE;
             }
+
+            if (e.type == SDL_WINDOWEVENT)
+            {
+                sdl_interface.draw = CG_TRUE;
+            }
+
         }
+
         if (sdl_interface.draw == CG_TRUE)
         {
             SDL_RenderClear(sdl_interface.renderer);
@@ -53,6 +62,10 @@ void sdl_mainloop(void)
             sdl_interface.draw = CG_FALSE;
         }
     }
+    // dispatch events
+    // order all texture, and redraw the main renderer
+
+
 }
 
 int CGW_SDLInit(char* name, int width, int height)
@@ -61,6 +74,7 @@ int CGW_SDLInit(char* name, int width, int height)
 	SDL_Renderer    *r;
     SDL_Rect        srect;
 
+    printf("%d\n", TMP);
     // init SDL
 	SDL_Init(SDL_INIT_EVERYTHING);
 
@@ -116,7 +130,8 @@ int CGW_SDLInit(char* name, int width, int height)
 	//IMG_Init(IMG_INIT_PNG);
 	//TTF_Init();
 	//SDL_StartTextInput();
-    sdl_mainloop();
+
+    sdl_interface.mainloop = sdl_mainloop;
 	return 0;
 }
 
@@ -125,5 +140,16 @@ int CGW_SDLQuit(void)
     SDL_DestroyRenderer(sdl_interface.renderer);
     SDL_DestroyWindow(sdl_interface.window);
     SDL_Quit();
+    return 0;
+}
+
+
+int CGW_SDLLoop(void* a)
+{
+    long int begin, end;
+    begin = SDL_GetPerformanceCounter();
+    sdl_interface.mainloop(a);
+    end = SDL_GetPerformanceCounter();
+
     return 0;
 }
