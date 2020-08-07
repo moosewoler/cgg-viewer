@@ -47,21 +47,19 @@ class ImageViewer(QObject):
         # 自定义ui
         self.ui = ui
 
-        ## 创建一个定时器
-        #self.__working = False
-        #self.__dt = dt 
-        #self.__timer = QTimer(self)
-        #self.__timer.timeout.connect(self.onTimer)
-        #self.__on_timer_update = None
+        # 创建一个定时器
+        self.timer = {}
+        self.timer['instance'] = QTimer(self)
+        self.timer['instance'].timeout.connect(self.onTimer)
+        self.timer['dt'] = dt
+        self.timer['ontimer'] = None
 
     def __del__(self):
         pass
 
-    #def onTimer(self):
-    #    if  isinstance(self.__on_timer_update, types.FunctionType): 
-    #        self.__on_timer_update()
-    #    else:
-    #        print('on timer')
+    def onTimer(self):
+        if  isinstance(self.timer['ontimer'], types.MethodType): 
+            self.timer['ontimer']()
 
 class CrossGateViewer(ImageViewer):
     def __init__(self, dt=0.1, ui=None):
@@ -80,9 +78,6 @@ class CrossGateViewer(ImageViewer):
         self.map_completer = QCompleter(self)
         self.ui.edtMap.setCompleter(self.map_completer)
 
-
-        #self.ui.lblPath.setText('图档文件：')
-        #self.ui.btnOK.setText('扫描图档数据')
         self.ui.pushButton_2.setText('放大')
         self.ui.pushButton_3.setText('缩小')
         self.ui.statusbar.showMessage('就绪')
@@ -104,6 +99,10 @@ class CrossGateViewer(ImageViewer):
         self.ui.btnShowMap.clicked.connect(self.onButtonShowMapsClicked)
         self.ui.btnNextMap.clicked.connect(self.onButtonNextMapsClicked)
         self.ui.btnPrevMap.clicked.connect(self.onButtonPrevMapsClicked)
+        # 与动画有关的信号
+        self.ui.btnShowAnimation.clicked.connect(self.onButtonShowAnimationClicked)
+        self.ui.btnNextAnimation.clicked.connect(self.onButtonNextAnimationClicked)
+        self.ui.btnPrevAnimation.clicked.connect(self.onButtonPrevAnimationClicked)
 
         # 显示区有关的信号
         self.ui.edtIndex.editingFinished.connect(self.onEditIndexFinished)
@@ -152,9 +151,13 @@ class CrossGateViewer(ImageViewer):
             if len(self.a['available'])>0:
                 self.animation_completer.setModel(QStringListModel(self.a['available'], self))
                 self.ui.edtAnimation.setText(self.a['available'][0])
+                self.a_current = 0
                 self.log("可用animation文件 %d 个" % (len(self.a['available'])))
             if len(self.ai['available'])>0:
                 self.log("可用animation info文件 %d 个" % (len(self.ai['available'])))
+            
+            self.timer['ontimer'] = self.refreashAnimation
+            self.animation_data = []
 
             # 获取可用map列表
             if len(self.m['available'])>0:
@@ -246,6 +249,72 @@ class CrossGateViewer(ImageViewer):
         # 自适应显示内容
         self.ui.graphicsScene.setSceneRect(self.ui.graphicsScene.itemsBoundingRect())
 
+    def refreashAnimation(self):
+        if self.__state == 'animation':
+            base_x = 300
+            base_y = 300
+            frame = self.animation_data[self.frame_count]
+
+            if self.graphics_item == None:
+                self.graphics_item = self.ui.graphicsScene.addPixmap(frame[0])
+                self.graphics_item.setPos(base_x + frame[3]['X偏移'], base_y + frame[3]['Y偏移'])
+            else:
+                self.ui.graphicsScene.removeItem(self.graphics_item)
+                self.graphics_item = self.ui.graphicsScene.addPixmap(frame[0])
+                self.graphics_item.setPos(base_x + frame[3]['X偏移'], base_y + frame[3]['Y偏移'])
+
+            self.frame_count = self.frame_count + 1
+            if self.frame_count >= len(self.animation_data):
+                self.frame_count = 0
+
+    def loadAnimationThenShow(self, animation_index, action_index):
+        # 关闭定时器
+        self.timer['instance'].stop()
+        self.frame_count= 0
+        self.animation_data = []
+        self.graphics_item = None
+
+        # 清除显示场景
+        self.ui.graphicsScene.clear()
+
+        # 读调色板数据
+        self.cgg.loadPalette(self.ui.edtPalette.text())
+        self.logClear()
+        self.log(">> 读取调色板数据 OK")
+
+        # 读取动画数据并解析显示
+        [pixmaps, header, frames, info] = self.cgg.loadAnimation(self.ui.edtAnimation.text(), animation_index, action_index, self.ui.edtGraphics.text())
+        self.log(">> 读取动画数据 OK")
+
+        if (info != None):
+            self.logSeparator("动画档： %s 总数： %d" % (self.ui.edtAnimation.text(), self.__total_image))
+            self.log(">> 编号：%d" % (animation_index))
+            self.logSeparator("动画档信息")
+            for key in info:
+                self.log("%s: %d" % (key, info[key]))
+            self.logSeparator("动画头")
+            for key in header:
+                self.log("%s: %d" % (key, header[key]))
+            self.logSeparator("帧信息")
+            i = 0
+            for f in frames:
+                self.log(">> 帧序号：%d" % (i))
+                for key in f:
+                    self.log("%s: %d" % (key, f[key]))
+                i = i+1
+
+            if pixmaps != None:
+                for [p, x, y, info] in pixmaps:
+                    item = self.ui.graphicsScene.addPixmap(p)
+                    item.setPos(x, y)
+            
+            self.animation_data = pixmaps
+
+        # 自适应显示内容
+        self.ui.graphicsScene.setSceneRect(self.ui.graphicsScene.itemsBoundingRect())
+
+        # 启动定时器
+        self.timer['instance'].start(header['时间']/header['帧数'])
 
     #def readCurrentImage(self):
     #    img = self.__images[self.__current_image]
@@ -331,7 +400,7 @@ class CrossGateViewer(ImageViewer):
         elif self.__state == 'palette':
             self.loadPaletteThenShow()
         elif self.__state == "animation":
-            pass
+            self.loadAnimationThenShow(self.__current_image, 0)
         else:
             pass
 
@@ -350,7 +419,7 @@ class CrossGateViewer(ImageViewer):
         elif self.__state == 'palette':
             self.loadPaletteThenShow()
         elif self.__state == "animation":
-            pass
+            self.loadAnimationThenShow(self.__current_image, 0)
         else:
             pass
 
@@ -401,7 +470,7 @@ class CrossGateViewer(ImageViewer):
 
 
 
-    #######################################################################
+    #########################################################################################################################
     #   与地图相关的按钮响应函数
     def onButtonShowMapsClicked(self):
         self.__state = "maps"
@@ -432,49 +501,121 @@ class CrossGateViewer(ImageViewer):
         self.ui.edtMap.setText(self.m['available'][self.m_current])
         self.loadMapThenShow()
 
+    #########################################################################################################################
+    #   与动画相关的按钮响应函数
+    def onButtonShowAnimationClicked(self):
+        self.__state = "animation"
+        # 根据info文件算出（角色）动画总数
+        self.__current_animation = 0
+        self.__current_action = 0
+        self.__total_animation = math.floor(self.cgg.getAnimationCount(self.ui.edtAnimation.text()))
+        self.__total_action = self.cgg.getAnimationActionCount(self.ui.edtAnimation.text(), 0)
 
-    #######################################################################
+        # 修改当前动画档指针
+        if self.ui.edtAnimation.text() in self.a['available']:
+            self.a_current = self.a['available'].index(self.ui.edtAnimation.text())
+
+        self.loadAnimationThenShow(0, 0)
+        self.ui.edtIndex.setText("%d %d" % (self.__current_animation, self.__current_action))
+
+    def onButtonNextAnimationClicked(self):
+        self.__state = "animation"
+        self.ui.edtIndex.setText("%d" % (self.__current_image))
+        # 根据info文件算出（角色）动画总数
+        self.__current_animation = 0
+        self.__current_action = 0
+        self.__total_image = math.floor(self.cgg.getAnimationCount(self.ui.edtAnimation.text()))
+        self.__total_action = self.cgg.getAnimationActionCount(self.ui.edtAnimation.text(), 0)
+
+        self.a_current = self.a_current + 1
+        if self.a_current >= len(self.a['available']) :
+            self.a_current = 0
+
+        self.ui.edtAnimation.setText(self.a['available'][self.a_current])
+        self.loadAnimationThenShow(0, 0)
+
+    def onButtonPrevAnimationClicked(self):
+        self.__state = "animation"
+        self.ui.edtIndex.setText("%d" % (self.__current_image))
+        # 根据info文件算出（角色）动画总数
+        self.__current_animation = 0
+        self.__current_action = 0
+        self.__total_image = math.floor(self.cgg.getAnimationCount(self.ui.edtAnimation.text()))
+        self.__total_action = self.cgg.getAnimationActionCount(self.ui.edtAnimation.text(), 0)
+
+        self.a_current = self.a_current - 1
+        if (self.a_current < 0):
+            self.a_current = len(self.a['available'])-1
+
+        self.ui.edtAnimation.setText(self.a['available'][self.a_current])
+        self.loadAnimationThenShow(0, 0)
+
+    #########################################################################################################################
     #   显示区控件的响应函数
     def onEditIndexFinished(self):
-        index = utils.str2num(self.ui.edtIndex.text())
-        if (index != False) and (index < self.__total_image) and (index>=0):
-            self.__current_image = index
-
         # 分state处理
         if self.__state == "graphics":
+            index = utils.str2num(self.ui.edtIndex.text())
+            if (index != False) and (index < self.__total_image) and (index>=0):
+                self.__current_image = index
+
             self.loadGraphicsThenShow(self.__current_image)
         elif self.__state == "animation":
-            pass
+            [ani_str, act_str] = self.ui.edtIndex.text().split(' ',1)
+            print(ani_str, act_str)
+            self.__current_animation = utils.str2num(ani_str)
+            self.__current_action = utils.str2num(act_str)
+            self.loadAnimationThenShow(self.__current_animation, self.__current_action)
         else:
             pass
 
     def onButtonNextClicked(self):
-        # 拨计数
-        self.__current_image = self.__current_image + 1
-        if self.__current_image >= self.__total_image:
-            self.__current_image = 0
-
         # 分state处理
         if self.__state == "graphics":
+            # 拨计数
+            self.__current_image = self.__current_image + 1
+            if self.__current_image >= self.__total_image:
+                self.__current_image = 0
             self.loadGraphicsThenShow(self.__current_image)
             self.ui.edtIndex.setText("%d" % (self.__current_image))
         elif self.__state == "animation":
-            pass
+            # 拨计数
+            self.__current_action = self.__current_action + 1
+            if self.__current_action >= self.__total_action:
+                self.__current_action = 0
+                self.__current_animation = self.__current_animation + 1
+                if self.__current_animation >= self.__total_animation:
+                    self.__current_animation = 0
+                self.__total_action = self.cgg.getAnimationActionCount(self.ui.edtAnimation.text(), self.__current_animation)
+            
+            print(self.__total_animation, self.__current_animation, self.__total_action, self.__current_action)
+
+            self.loadAnimationThenShow(self.__current_animation, self.__current_action)
+            self.ui.edtIndex.setText("%d %d" % (self.__current_animation, self.__current_action))
         else:
             pass
 
     def onButtonPrevClicked(self):
-        # 拨计数
-        self.__current_image = self.__current_image - 1
-        if self.__current_image <= -1:
-            self.__current_image = self.__total_image - 1 
-
         # 分state处理
         if self.__state == "graphics":
+            # 拨计数
+            self.__current_image = self.__current_image - 1
+            if self.__current_image <= -1:
+                self.__current_image = self.__total_image - 1 
             self.loadGraphicsThenShow(self.__current_image)
             self.ui.edtIndex.setText("%d" % (self.__current_image))
         elif self.__state == "animation":
-            pass
+            # 拨计数
+            self.__current_action = self.__current_action - 1
+            if self.__current_action < 0:
+                self.__current_action = self.__total_action -1
+                self.__current_animation = self.__current_animation - 1
+                if self.__current_animation <0:
+                    self.__current_animation = self.__total_animation -1
+                self.__total_action = self.cgg.getAnimationActionCount(self.ui.edtAnimation.text(), self.__current_animation)
+
+            self.loadAnimationThenShow(self.__current_animation, self.__current_action)
+            self.ui.edtIndex.setText("%d %d" % (self.__current_animation, self.__current_action))
         else:
             pass
 

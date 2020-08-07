@@ -14,7 +14,7 @@ my_app['application']  = QApplication(sys.argv)
 my_app['main_window']  = QMainWindow()
 my_app['ui']           = custom_frame.Ui_MainWindow()
 my_app['ui'].setupUi(my_app['main_window'])
-my_app['user_class']   = CrossGateViewer(0.1, my_app['ui'])
+my_app['user_class']   = CrossGateViewer(0.5, my_app['ui'])
 
 # 显示窗体
 my_app['main_window'].show()

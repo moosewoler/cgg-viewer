@@ -164,7 +164,7 @@ class CrossGateGraphics:
             print(err)
             return False
 
-    #################################################################################
+    ###################################################################################################################################
     #       与调色板相关的函数
     def loadPalette(self, palette_name):
         if self.isResourceAvailable(palette_name, self.__palette):
@@ -194,7 +194,7 @@ class CrossGateGraphics:
             print("invalid palette name: %s" % (palette_name) )
             return None
 
-    #################################################################################
+    ###################################################################################################################################
     #       与图档相关的函数
     def resetCachedGraphic(self):
         self.__graphics['cache'] = []
@@ -466,7 +466,7 @@ class CrossGateGraphics:
             print("invalid graphics name: %s, grahpics index: %d" % (graphics_name, graphic_index) )
             return [None, None, None]
 
-    #################################################################################
+    ###################################################################################################################################
     #       与地图相关的函数
     def resetCachedMap(self):
         self.__maps['cache'] = []
@@ -595,6 +595,123 @@ class CrossGateGraphics:
             return [self.__maps['pixmaps'], self.__maps['header']]
         else:
             return [None, None]
+    ###################################################################################################################################
+    #       与地图相关的函数
+    def getAnimationCount(self, animation_name):
+        if self.isResourceAvailable(animation_name, self.__animation):
+            # 根据animation名获取info名
+            info_name = self.guessInfoName(animation_name)
+            print(info_name)
+
+            # 根据info文件尺寸计算图档数目
+            if self.isResourceAvailable(info_name, self.__animation_info):
+                info_filesize = os.path.getsize(self.__animation_info['path']+'/'+info_name)
+                return info_filesize/12
+            else:
+                return -1 
+    def getAnimationActionCount(self, animation_name, animation_index):
+        # 根据角色动画序号，查取动作数
+        if self.isResourceAvailable(animation_name, self.__animation):
+            # 读入动画信息文件
+            info_name = self.guessInfoName(animation_name)
+            if self.isResourceAvailable(info_name, self.__animation_info):
+                self.loadAnimationInfo(info_name, animation_index)
+            return self.__animation_info['dict']['动作数目']
+        else:
+            return -1
+
+
+    def loadAnimationInfo(self, info_name, info_index):
+        info_filesize = os.path.getsize(self.__animation_info['path']+'/'+info_name)
+
+        if (info_index+1)*12 <= info_filesize:  # 动画info每个块12字节
+            self.__animation_info['raw'] = []
+            f = open(self.__animation_info['path']+'/'+info_name, 'rb')
+            f.seek(info_index*12,0)     # 每条动画info记录固定12个字节
+            # 将info原始数据读出
+            self.__animation_info['raw'] = f.read(40)
+            f.close()
+
+            # 处理原始数据
+            self.__animation_info['dict'] = {}
+            self.__animation_info['dict']['序号']    = int.from_bytes(self.__animation_info['raw'][0: 0+4], byteorder='little')
+            self.__animation_info['dict']['地址']    = int.from_bytes(self.__animation_info['raw'][4: 4+4], byteorder='little')
+            self.__animation_info['dict']['动作数目']= int.from_bytes(self.__animation_info['raw'][8: 8+2], byteorder='little')
+            self.__animation_info['dict']['未知']    = int.from_bytes(self.__animation_info['raw'][10:10+2], byteorder='little')
+
+        else:
+            self.__animation_info['dict'] = None
+
+    def getAnimationRawData(self, animation_name, animation_index):
+        # 获取动画数据尺寸
+        # 一个角色动画包含若干个动作，每个动作都由头块（12字节）以及若干帧块（10字节/块）组成，所以不定长。为了获得全部动作数据，需要依次读取
+        self.__animation['raw'] = []
+        f = open(self.__animation['path']+'/'+ animation_name, 'rb')
+        f.seek(self.__animation_info['dict']['地址'], 0)
+
+        if self.__animation_info['dict'] != None:
+            action_index = 0
+            while action_index < self.__animation_info['dict']['动作数目']:
+                action = {}
+                action['header'] = {}
+                header = f.read(12)        # 头长12字节，每个动作
+                # 读取动画头
+                action['header']['方向号']    = int.from_bytes(header[0:2], byteorder='little')
+                action['header']['动作号']    = int.from_bytes(header[2:4], byteorder='little')
+                action['header']['时间']      = int.from_bytes(header[4:8], byteorder='little')
+                action['header']['帧数']      = int.from_bytes(header[8:12], byteorder='little')
+                # 读取帧数据
+                action['frame'] = f.read(action['header']['帧数']*10)
+
+                self.__animation['raw'].append(action)
+
+                action_index = action_index + 1
+
+        f.close()
+
+        pass
+
+    def loadAnimation(self, animation_name, animation_index, action_index, graphics_name):
+        print(animation_name, animation_index, graphics_name)
+        self.__animation['pixmaps'] = None
+        self.__animation['header'] = None
+
+        if self.isResourceAvailable(animation_name, self.__animation):
+
+            # 读入动画信息文件
+            info_name = self.guessInfoName(animation_name)
+            if self.isResourceAvailable(info_name, self.__animation_info):
+                self.loadAnimationInfo(info_name, animation_index)
+
+            # 读取动画数据
+            if self.__animation_info['dict'] != None:
+                self.getAnimationRawData(animation_name, animation_index)
+
+            if action_index < self.__animation_info['dict']['动作数目']:
+                self.__animation['header'] = self.__animation['raw'][action_index]['header']
+                self.__animation['frames'] = []
+                for i in range(self.__animation['header']['帧数']):
+                    frame = {}
+                    base = i*10
+                    frame_raw = self.__animation['raw'][action_index]['frame'][base : base+10]
+                    frame['图片号'] = int.from_bytes(frame_raw[0:4], byteorder='little')
+                    frame['未知']   = int.from_bytes(frame_raw[4:10], byteorder='little')
+                    self.__animation['frames'].append(frame)
+
+            # 渲染动作
+            self.__animation['pixmaps'] = []
+            print("rendering animation ... ", end="")
+            x = 0
+            y = 0
+            for f in self.__animation['frames']:
+                [pixmap, header, info] = self.loadGraphics(graphics_name, f['图片号'])
+                self.__animation['pixmaps'].append([pixmap, x, y, info])
+                x = x + header['宽度'] + 5
+            print("OK")
+
+            return [self.__animation['pixmaps'], self.__animation['header'], self.__animation['frames'], self.__animation_info['dict']]
+        else:
+            return [None, None, None]
 
     #################################################################################
     #       与缓存相关的函数
