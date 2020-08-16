@@ -99,3 +99,44 @@ def str2num(s):
     except Exception:
         print('Can not convert %s to number.' % (s))
         return False
+
+def log(s):
+    import traceback
+    if not hasattr(log, 'prev_func'):
+        log.prev_func = 'empty'
+
+    stackTuple = traceback.extract_stack(limit=2)[0]    # limit=2表示调用者的stack
+
+    filename = stackTuple[0].split('/')
+    linenumber = stackTuple[1]
+    funcname = stackTuple[2]
+
+    if log.prev_func == funcname:
+        pass
+    else:
+        print("\033[1;34m---------- %s/%s() --------------------\033[0;30m" % (filename[-1], funcname))
+        log.prev_func = funcname
+
+    print("[%s]" % (linenumber), s)
+
+
+
+def warn(s):
+    import traceback
+    if not hasattr(warn, 'prev_func'):
+        warn.prev_func = 'empty'
+
+    stackTuple = traceback.extract_stack(limit=2)[0]    # limit=2表示调用者的stack
+
+    filename = stackTuple[0].split('/')
+    linenumber = stackTuple[1]
+    funcname = stackTuple[2]
+
+    if warn.prev_func == funcname:
+        pass
+    else:
+        print("\033[1;31m---------- %s/%s() --------------------\033[0;30m" % (filename[-1], funcname))
+        warn.prev_func = funcname
+
+    print("[%s]" % (linenumber), s)
+

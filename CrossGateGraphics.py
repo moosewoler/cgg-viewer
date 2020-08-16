@@ -14,8 +14,12 @@ import numpy as np
 
 import utils    # 个人常用功能函数
 
-class CrossGateGraphics:
+from PyQt5.QtCore    import *
+
+class CrossGateGraphics(QObject):
+    map_updated = pyqtSignal(int, str)
     def __init__(self, root_dir):
+        QObject.__init__(self)
         # private dictionaries
         self.__root = ""
         self.__graphics = {}
@@ -137,7 +141,7 @@ class CrossGateGraphics:
         try:
             while (root_dir.rfind("/") == len(root_dir)-1):
                 root_dir = root_dir[0:len(root_dir)-1]
-                print(root_dir)
+                utils.log(root_dir)
 
             if not self.isValidRoot(root_dir):
                 raise Exception("invalid root_dir")
@@ -161,7 +165,7 @@ class CrossGateGraphics:
             return True
 
         except Exception as err:
-            print(err)
+            utils.log(err)
             return False
 
     ###################################################################################################################################
@@ -191,7 +195,7 @@ class CrossGateGraphics:
             self.__palette['pixmap'] = Image.fromarray(p).toqpixmap()
             return self.__palette['pixmap']
         else:
-            print("invalid palette name: %s" % (palette_name) )
+            utils.log("invalid palette name: %s" % (palette_name) )
             return None
 
     ###################################################################################################################################
@@ -207,7 +211,7 @@ class CrossGateGraphics:
 
             self.__graphics['cache'].append([pixmap, header, info])
             self.__graphics['cachestr'].append(cache_str)
-            print("graph cached at %s, cache used %d" % (cache_str, len(self.__graphics['cache'])))
+            utils.log("%s cached, total %d" % (cache_str, len(self.__graphics['cache'])))
         pass
 
     def isCached(self, graphics_name, index):
@@ -255,7 +259,15 @@ class CrossGateGraphics:
         # 这个函数是根据lua版本的函数改写而来
         status = 'c'
         c_counter = 1
-        raw = list(raw_withheader[16:len(raw_withheader)])  # 将bytes转换为list后才可以用pop()
+
+        # 将原始数据切除头部，v1头长16字节，v3头长20字节
+        if header['版本'] == 1:
+            raw = list(raw_withheader[16:len(raw_withheader)])  # 将bytes转换为list后才可以用pop()
+        elif header['版本'] == 3:
+            raw = list(raw_withheader[20:len(raw_withheader)])  # 将bytes转换为list后才可以用pop()
+        else:
+            utils.warn("未知数据版本 %d" % (header['版本']))
+
         raw_length = len(raw)
         rle = []
 
@@ -404,6 +416,69 @@ class CrossGateGraphics:
             else:
                 return -1 
 
+    def loadGraphicsV1(self, graphics_name, graphic_index):
+        # RunLength解码
+        if self.__graphics['header']['魔数'] == 'RD':  # 魔数固定为'RD'，ascii码变整形为17490
+            self.__graphics['rle'] = self.extractGraphics(self.__graphics['raw'], self.__graphics['header'])
+            # 有时解析之后会莫名其妙多出1个字节，所以强制截掉多出的字节
+            self.__graphics['rle'] = self.__graphics['rle'][0:(self.__graphics['header']['宽度']*self.__graphics['header']['高度'])]
+
+            # 假设palette数据存在，并根据palette解释rgb数据，由于需要添加alpha，所以不用PIL的palette模式
+            self.__graphics['bytes'] = []
+            for pixel in self.__graphics['rle']:
+                if pixel == 0xF0:
+                    self.__graphics['bytes'].append([0, 0, 0, 0])
+                else:
+                    [r, g, b] = self.__palette['raw'][pixel]
+                    a = 255
+                    self.__graphics['bytes'].append([r,g,b,a])
+
+            # 变成pixmap数据返回
+            p = np.array(self.__graphics['bytes']).astype('uint8')
+            p = p.reshape(self.__graphics_info['dict']['高度'],-1,4)
+            # 把数组上下翻转，因为像素按行倒序存放
+            p = np.flipud(p)
+            self.__graphics['pixmap'] = Image.fromarray(p, mode='RGBA').toqpixmap()
+
+    def loadGraphicsV3(self, grahpics_name, graphic_index):
+        utils.warn("graphics v3 is not fully supported")
+
+        if self.__graphics['header']['魔数'] == 'RD':
+            # RunLength解码
+            self.__graphics['rle'] = self.extractGraphics(self.__graphics['raw'], self.__graphics['header'])
+
+            # 校验一下解压出来的数据长度是否正确
+            rle_length = self.__graphics['header']['宽度']*self.__graphics['header']['高度'] + self.__graphics['header']['调色板长度']
+            if len(self.__graphics['rle']) == rle_length:
+
+                # 切出内置调色板
+                inpal = self.__graphics['rle'][-self.__graphics['header']['调色板长度']-1:-1]
+                # 把内置调色板整形成一长条list
+                inpal_np = np.array(inpal).astype('uint8')
+                inpal_np = inpal_np.reshape(-1,3)
+                self.__graphics['inpal'] = inpal_np.tolist()
+
+                # 切出图像数据
+                pp = self.__graphics['rle'][0:(self.__graphics['header']['宽度']*self.__graphics['header']['高度'])]
+                self.__graphics['bytes'] = []
+                for pixel in pp:
+                    if pixel == 0xF0:
+                        self.__graphics['bytes'].append([0, 0, 0, 0])
+                    else:
+                        [r, g, b] = self.__graphics['inpal'][pixel]
+                        a = 255
+                        self.__graphics['bytes'].append([r,g,b,a])
+
+                # 变成pixmap数据返回
+                p = np.array(self.__graphics['bytes']).astype('uint8')
+                p = p.reshape(self.__graphics_info['dict']['高度'],-1,4)
+                # 把数组上下翻转，因为像素按行倒序存放
+                p = np.flipud(p)
+                self.__graphics['pixmap'] = Image.fromarray(p, mode='RGBA').toqpixmap()
+
+            else:
+                utils.warn("rle数据长度（%d）不正确，应为%d" % (len(self.__graphics['rle']), rle_length))
+
     def loadGraphics(self, graphics_name, graphic_index):
         # 先查看是否被cache
         if self.isCached(graphics_name, graphic_index):
@@ -430,40 +505,28 @@ class CrossGateGraphics:
 
                 # 读取图档头
                 self.__graphics['header'] ={}
-                self.__graphics['header']['魔数']    = int.from_bytes(self.__graphics['raw'][0: 0+2], byteorder='little')
+                self.__graphics['header']['魔数']    = str(self.__graphics['raw'][0: 2], encoding='utf8')
                 self.__graphics['header']['版本']    = self.__graphics['raw'][2]
                 self.__graphics['header']['未知']    = self.__graphics['raw'][3]
                 self.__graphics['header']['宽度']    = int.from_bytes(self.__graphics['raw'][4: 4+4], byteorder='little')
                 self.__graphics['header']['高度']    = int.from_bytes(self.__graphics['raw'][8: 8+4], byteorder='little')
                 self.__graphics['header']['块长度']  = int.from_bytes(self.__graphics['raw'][12:12+4], byteorder='little')
 
-                # RunLength解码
-                if self.__graphics['header']['魔数'] == 17490:  # 魔数固定为'RD'，ascii码变整形为17490
-                    self.__graphics['rle'] = self.extractGraphics(self.__graphics['raw'], self.__graphics['header'])
-                    # 有时解析之后会莫名其妙多出1个字节，所以强制截掉多出的字节
-                    self.__graphics['rle'] = self.__graphics['rle'][0:(self.__graphics['header']['宽度']*self.__graphics['header']['高度'])]
+                if self.__graphics['header']['版本'] == 3:
+                    self.__graphics['header']['调色板长度'] = int.from_bytes(self.__graphics['raw'][16:20], byteorder='little') 
 
-                    # 假设palette数据存在，并根据palette解释rgb数据，由于需要添加alpha，所以不用PIL的palette模式
-                    self.__graphics['bytes'] = []
-                    for pixel in self.__graphics['rle']:
-                        if pixel == 0xF0:
-                            self.__graphics['bytes'].append([0, 0, 0, 0])
-                        else:
-                            [r, g, b] = self.__palette['raw'][pixel]
-                            a = 255
-                            self.__graphics['bytes'].append([r,g,b,a])
 
-                    # 变成pixmap数据返回
-                    p = np.array(self.__graphics['bytes']).astype('uint8')
-                    p = p.reshape(self.__graphics_info['dict']['高度'],-1,4)
-                    # 把数组上下翻转，因为像素按行倒序存放
-                    p = np.flipud(p)
-                    self.__graphics['pixmap'] = Image.fromarray(p, mode='RGBA').toqpixmap()
+                if self.__graphics['header']['版本'] == 1:
+                    self.loadGraphicsV1(graphics_name, graphic_index)
+                    self.cacheGraphic(graphics_name, self.__graphics['pixmap'], self.__graphics['header'], self.__graphics_info['dict'])
+                elif self.__graphics['header']['版本'] == 3:
+                    self.loadGraphicsV3(graphics_name, graphic_index)
+                    self.cacheGraphic(graphics_name, self.__graphics['pixmap'], self.__graphics['header'], self.__graphics_info['dict'])
+
                 
-            self.cacheGraphic(graphics_name, self.__graphics['pixmap'], self.__graphics['header'], self.__graphics_info['dict'])
             return [self.__graphics['pixmap'], self.__graphics['header'], self.__graphics_info['dict']]
         else:
-            print("invalid graphics name: %s, grahpics index: %d" % (graphics_name, graphic_index) )
+            utils.log("invalid graphics name: %s, grahpics index: %d" % (graphics_name, graphic_index) )
             return [None, None, None]
 
     ###################################################################################################################################
@@ -525,7 +588,7 @@ class CrossGateGraphics:
             return self.getCachedMap(map_name)
 
         if self.isResourceAvailable(map_name, self.__maps):
-            print("loading map %s, using graphics %s ... " % (map_name, graphics_name), end="")
+            utils.log("loading map %s, using graphics %s ... " % (map_name, graphics_name))
             # 读入地图文件
             fsize = os.path.getsize(self.__maps['path'] + '/' + map_name)
             f = open(self.__maps['path'] + '/' + map_name, 'rb')
@@ -557,11 +620,13 @@ class CrossGateGraphics:
             self.__maps['pixmaps'] = []
             # 渲染地面
             print("rendering ground ... ", end="")
+            width = self.__maps['header']['宽度（东）']
+            height = self.__maps['header']['高度（南）']
             for south in range(self.__maps['header']['高度（南）']):
                 for east in range(self.__maps['header']['宽度（东）']):
                     if self.__maps['ground'][south, east] == 0:
                         # 地面没有tile，用0号tile占位
-                        [pixmap, info, header] = self.loadGraphics(graphics_name, 0) 
+                        [pixmap, info, header] = self.loadGraphics(graphics_name, 1) 
                         x = 32 + (east-1)*32 + (south-1)*32 -24
                         y = 24 + self.__maps['header']['宽度（东）']*48/2 - (east-1)*24 + (south-1)*24 -31
                     else:
@@ -572,6 +637,8 @@ class CrossGateGraphics:
                         y = 24 + self.__maps['header']['宽度（东）']*48/2 - (east-1)*24 + (south-1)*24 + info['Y偏移']
 
                     self.__maps['pixmaps'].append([pixmap, x, y])
+                    progress = (south * width + east) / (width*height)
+                    self.map_updated.emit(int(progress*100), "[地图]渲染地面")
             print("OK")
 
             # 渲染物体
@@ -589,6 +656,9 @@ class CrossGateGraphics:
                                     x = 32 + (east-1)*32 + (south-1)*32 + info['X偏移']
                                     y = 24 + self.__maps['header']['宽度（东）']*48/2 - (east-1)*24 + (south-1)*24 + info['Y偏移']
                                     self.__maps['pixmaps'].append([pixmap, x, y])
+                progress = (ro + self.__maps['header']['宽度（东）'] - 1 ) / (self.__maps['header']['高度（南）']+self.__maps['header']['宽度（东）']-1 )
+                self.map_updated.emit(int(progress*100), "[地图]渲染物体")
+            self.map_updated.emit(100, "[地图]渲染物体")
             print("OK")
 
             self.cacheMap(map_name, self.__maps['pixmaps'], self.__maps['header'])
@@ -601,11 +671,11 @@ class CrossGateGraphics:
         if self.isResourceAvailable(animation_name, self.__animation):
             # 根据animation名获取info名
             info_name = self.guessInfoName(animation_name)
-            print(info_name)
 
             # 根据info文件尺寸计算图档数目
             if self.isResourceAvailable(info_name, self.__animation_info):
                 info_filesize = os.path.getsize(self.__animation_info['path']+'/'+info_name)
+                print(info_name, info_filesize, info_filesize/12)
                 return info_filesize/12
             else:
                 return -1 
@@ -625,6 +695,7 @@ class CrossGateGraphics:
         info_filesize = os.path.getsize(self.__animation_info['path']+'/'+info_name)
 
         if (info_index+1)*12 <= info_filesize:  # 动画info每个块12字节
+            print(info_index, info_filesize, (info_index+1)*12)
             self.__animation_info['raw'] = []
             f = open(self.__animation_info['path']+'/'+info_name, 'rb')
             f.seek(info_index*12,0)     # 每条动画info记录固定12个字节
